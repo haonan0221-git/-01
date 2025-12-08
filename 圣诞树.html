@@ -122,17 +122,13 @@
             }
         });
 
-        // --- 照片列表 ---
+        // --- 照片配置 ---
         const MY_PHOTOS = [
             'photos/1.jpg', 'photos/2.jpg', 'photos/3.jpg', 'photos/4.jpg', 'photos/5.jpg', 'photos/6.jpg'
         ];
 
         const CONFIG = {
-            colors: { 
-                gold: 0xFFD700, 
-                red: 0xDC143C, 
-                green: 0x006400 
-            },
+            colors: { gold: 0xFFD700, red: 0xDC143C, green: 0x006400 },
             particleCount: 1500,
             treeHeight: 650,
             treeRadius: 280,
@@ -149,7 +145,6 @@
         let currentMode = 'TREE';
         let activePhoto = null;
         let targetRotX = 0, targetRotY = 0;
-        let lastGestureTime = 0; // 防抖
 
         function initThree() {
             const container = document.getElementById('canvas-container');
@@ -213,7 +208,6 @@
         function createDecorations() {
             const sphereGeo = new THREE.SphereGeometry(1, 16, 16);
             const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-
             const matGold = new THREE.MeshStandardMaterial({ color: CONFIG.colors.gold, roughness: 0.1, metalness: 1.0, emissive: CONFIG.colors.gold, emissiveIntensity: 0.5 });
             const matRed = new THREE.MeshStandardMaterial({ color: CONFIG.colors.red, roughness: 0.2, metalness: 0.8, emissive: CONFIG.colors.red, emissiveIntensity: 0.3 });
             const matGreen = new THREE.MeshStandardMaterial({ color: CONFIG.colors.green, roughness: 0.8, metalness: 0.1 });
@@ -221,28 +215,16 @@
             for (let i = 0; i < CONFIG.particleCount; i++) {
                 let mesh, scaleBase, rnd = Math.random();
                 let isOrnaments = false;
-
-                if (rnd < 0.40) { 
-                    mesh = new THREE.Mesh(sphereGeo, matGold); 
-                    scaleBase = 6 + Math.random() * 8; isOrnaments = true;
-                } else if (rnd < 0.65) { 
-                    mesh = new THREE.Mesh(sphereGeo, matRed); 
-                    scaleBase = 5 + Math.random() * 6; isOrnaments = true;
-                } else { 
-                    mesh = new THREE.Mesh(boxGeo, matGreen); 
-                    scaleBase = 3 + Math.random() * 4; 
-                    mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6);
-                    isOrnaments = false;
-                }
+                if (rnd < 0.40) { mesh = new THREE.Mesh(sphereGeo, matGold); scaleBase = 6 + Math.random() * 8; isOrnaments = true; } 
+                else if (rnd < 0.65) { mesh = new THREE.Mesh(sphereGeo, matRed); scaleBase = 5 + Math.random() * 6; isOrnaments = true; } 
+                else { mesh = new THREE.Mesh(boxGeo, matGreen); scaleBase = 3 + Math.random() * 4; mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6); isOrnaments = false; }
                 
                 mesh.scale.setScalar(scaleBase);
-                
                 const theta = Math.random() * Math.PI * 2;
                 const y = Math.pow(Math.random(), 0.9) * CONFIG.treeHeight - CONFIG.treeHeight / 2;
                 const maxR = CONFIG.treeRadius * (1 - (y + CONFIG.treeHeight/2)/CONFIG.treeHeight);
                 let r;
-                if (isOrnaments) r = maxR * (0.6 + 0.4 * Math.random());
-                else r = maxR * Math.pow(Math.random(), 0.5); 
+                if (isOrnaments) r = maxR * (0.6 + 0.4 * Math.random()); else r = maxR * Math.pow(Math.random(), 0.5); 
 
                 mesh.userData = {
                     treePos: { x: r * Math.cos(theta), y: y, z: r * Math.sin(theta) },
@@ -285,10 +267,8 @@
         }
 
         function transformTo(mode) {
-            // 避免重复触发
             if(currentMode === mode) return;
             currentMode = mode;
-            
             if(activePhoto) {
                 new TWEEN.Tween(activePhoto.scale).to({x:1, y:1, z:1}, 800).start();
                 new TWEEN.Tween(activePhoto.material).to({ emissiveIntensity: CONFIG.photoBrightness.normal.intensity }, 800).start();
@@ -297,10 +277,7 @@
             }
 
             const k = mode === 'TREE' ? 'treePos' : 'scatterPos';
-            // !!! 修复点：移除了报错的 .config() !!!
-            // 使用 Back.Out (会有回弹效果) 或者 Exponential.Out (更平滑)
             const ease = mode === 'TREE' ? TWEEN.Easing.Back.Out : TWEEN.Easing.Exponential.Out;
-            
             particles.forEach(p => {
                 new TWEEN.Tween(p.position).to(p.userData[k], 2000 + Math.random()*500).easing(ease).start();
                 if(mode === 'SCATTER' && p.geometry.type === 'BoxGeometry') new TWEEN.Tween(p.rotation).to({x:Math.random()*6, y:Math.random()*6}, 2500).start();
@@ -366,33 +343,33 @@
 
                 const fingersUp = [8,12,16,20].filter(i => lm[i].y < lm[i-2].y).length;
                 const d = (i,j) => Math.hypot(lm[i].x - lm[j].x, lm[i].y - lm[j].y);
-                const isPinch = d(4,8) < 0.05;
                 
-                // 防抖逻辑
-                const now = Date.now();
-                if (now - lastGestureTime < 500) return; // 0.5秒内不重复触发
+                // === 修复的核心逻辑：调整判定顺序 ===
+                
+                // 1. 放宽捏合判定 (0.08)，并优先判断
+                // 解释：哪怕其他手指是弯的，只要大拇指食指贴贴，就是看照片
+                const isPinch = d(4,8) < 0.08; 
 
-                // 优化后的判断逻辑
-                if (fingersUp <= 1) { 
-                    if(currentMode !== 'TREE') {
-                        statusEl.classList.add('active-gesture'); statusEl.innerText = "✊ 握拳：合拢"; 
-                        transformTo('TREE');
-                        lastGestureTime = now;
-                    }
-                } else if (fingersUp >= 3) { // 降低难度，3指就算张开
-                    if(currentMode !== 'SCATTER') {
-                        statusEl.classList.add('active-gesture'); statusEl.innerText = "🖐 张开：散开"; 
-                        transformTo('SCATTER');
-                        lastGestureTime = now;
-                    }
-                } else if (isPinch) { 
-                    if(currentMode !== 'ZOOM') {
-                        statusEl.classList.add('active-gesture'); statusEl.innerText = "👌 捏合：查看"; 
-                        grabPhoto(); 
-                        lastGestureTime = now;
-                    }
-                } else {
-                    statusEl.classList.remove('active-gesture');
+                if (isPinch) { 
+                    statusEl.classList.add('active-gesture'); 
+                    statusEl.innerText = "👌 捏合：查看照片"; 
+                    grabPhoto(); 
+                } 
+                // 2. 其次判断握拳 (前提是必须没有捏合)
+                else if (fingersUp <= 1) { 
+                    statusEl.classList.add('active-gesture'); 
+                    statusEl.innerText = "✊ 握拳：合拢"; 
+                    transformTo('TREE'); 
+                } 
+                // 3. 最后判断张开
+                else if (fingersUp >= 3) { 
+                    statusEl.classList.add('active-gesture'); 
+                    statusEl.innerText = "🖐 张开：散开"; 
+                    transformTo('SCATTER'); 
+                } 
+                else { 
+                    statusEl.classList.remove('active-gesture'); 
+                    statusEl.innerText = "等待手势..."; 
                 }
             }
         }
