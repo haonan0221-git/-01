@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>北北的圣诞树 (手势修复版)</title>
+    <title>北北的圣诞树 (完美合拢版)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: "Microsoft YaHei", sans-serif; -webkit-tap-highlight-color: transparent; }
         
-        /* 1. 启动层 */
+        /* 启动层 */
         #start-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.92); z-index: 999;
@@ -18,18 +18,13 @@
             padding: 15px 40px; 
             border: 2px solid #FFD700; 
             background: rgba(255, 215, 0, 0.15);
-            color: #FFD700; 
-            font-size: 18px; 
-            border-radius: 30px; 
-            cursor: pointer; 
-            box-shadow: 0 0 20px rgba(255, 215, 0, 0.4); 
-            text-transform: uppercase; 
-            font-weight: bold;
-            transition: all 0.3s;
+            color: #FFD700; font-size: 18px; border-radius: 30px; 
+            cursor: pointer; box-shadow: 0 0 20px rgba(255, 215, 0, 0.4); 
+            text-transform: uppercase; font-weight: bold; transition: all 0.3s;
         }
         #start-btn:active { transform: scale(0.95); }
 
-        /* 2. 标题文字 */
+        /* 标题 */
         #main-title {
             position: absolute; top: 12%; width: 100%; text-align: center;
             font-size: 40px; font-weight: bold; color: #fff;
@@ -42,7 +37,7 @@
             to { text-shadow: 0 0 30px #FFD700, 0 0 50px #FF4500; opacity: 1; }
         }
 
-        /* 3. 错误日志 */
+        /* 错误日志 */
         #error-log {
             position: fixed; bottom: 0; left: 0; width: 100%; max-height: 100px;
             background: rgba(50, 0, 0, 0.8); color: #ffaaaa; 
@@ -112,7 +107,6 @@
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
         import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
-        // --- 按钮逻辑 ---
         const btn = document.getElementById('start-btn');
         btn.addEventListener('click', async function() {
             this.innerText = "正在启动...";
@@ -124,29 +118,26 @@
                 initMediaPipe();
             } catch (e) {
                 this.innerText = "❌ 启动失败";
-                this.style.borderColor = "red";
-                this.style.color = "red";
-                alert("无法启动摄像头。请检查：\n1. 是否使用了 HTTPS 链接\n2. 是否点击了'允许'权限");
+                alert("无法启动摄像头。请确保使用HTTPS链接并允许权限。");
                 console.error(e);
             }
         });
 
-        // --- 照片配置 ---
+        // --- 这里修改照片文件名 ---
         const MY_PHOTOS = [
-            'photos/1.jpg',
-            'photos/2.jpg',
-            'photos/3.jpg',
-            'photos/4.jpg',
-            'photos/5.jpg',
-            'photos/6.jpg'
+            'photos/1.jpg', 'photos/2.jpg', 'photos/3.jpg', 'photos/4.jpg', 'photos/5.jpg', 'photos/6.jpg'
         ];
 
         const CONFIG = {
-            colors: { gold: 0xFFD700, red: 0xDC143C, dark: 0x1a1a1a },
-            particleCount: 1200, 
+            colors: { 
+                gold: 0xFFD700, 
+                red: 0xDC143C, 
+                // 修改：将黑色改为圣诞绿 (Green Fragments)
+                green: 0x006400 
+            },
+            particleCount: 1500, // 增加粒子让树更密
             treeHeight: 650,
             treeRadius: 280,
-            // 亮度控制
             photoBrightness: {
                 normal: { intensity: 0.5, color: {r:1, g:1, b:1} }, 
                 zoomed: { intensity: 0.05, color: {r:0.5, g:0.5, b:0.5} } 
@@ -223,20 +214,52 @@
         function createDecorations() {
             const sphereGeo = new THREE.SphereGeometry(1, 16, 16);
             const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+
             const matGold = new THREE.MeshStandardMaterial({ color: CONFIG.colors.gold, roughness: 0.1, metalness: 1.0, emissive: CONFIG.colors.gold, emissiveIntensity: 0.5 });
             const matRed = new THREE.MeshStandardMaterial({ color: CONFIG.colors.red, roughness: 0.2, metalness: 0.8, emissive: CONFIG.colors.red, emissiveIntensity: 0.3 });
-            const matDark = new THREE.MeshStandardMaterial({ color: CONFIG.colors.dark, roughness: 0.9, metalness: 0.2 });
+            // 修改：绿色碎片材质
+            const matGreen = new THREE.MeshStandardMaterial({ color: CONFIG.colors.green, roughness: 0.8, metalness: 0.1 });
 
             for (let i = 0; i < CONFIG.particleCount; i++) {
                 let mesh, scaleBase, rnd = Math.random();
-                if (rnd < 0.45) { mesh = new THREE.Mesh(sphereGeo, matGold); scaleBase = 6 + Math.random() * 8; } 
-                else if (rnd < 0.75) { mesh = new THREE.Mesh(sphereGeo, matRed); scaleBase = 5 + Math.random() * 6; } 
-                else { mesh = new THREE.Mesh(boxGeo, matDark); scaleBase = 4 + Math.random() * 5; mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6); }
+                let isOrnaments = false;
+
+                if (rnd < 0.40) { 
+                    // 40% 金球 (表面)
+                    mesh = new THREE.Mesh(sphereGeo, matGold); 
+                    scaleBase = 6 + Math.random() * 8; 
+                    isOrnaments = true;
+                } else if (rnd < 0.65) { 
+                    // 25% 红球 (表面)
+                    mesh = new THREE.Mesh(sphereGeo, matRed); 
+                    scaleBase = 5 + Math.random() * 6; 
+                    isOrnaments = true;
+                } else { 
+                    // 35% 绿色碎片 (内部填充 + 漂浮)
+                    mesh = new THREE.Mesh(boxGeo, matGreen); 
+                    scaleBase = 3 + Math.random() * 4; 
+                    mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6);
+                    isOrnaments = false;
+                }
                 
                 mesh.scale.setScalar(scaleBase);
+                
+                // --- 树形位置计算优化 ---
                 const theta = Math.random() * Math.PI * 2;
                 const y = Math.pow(Math.random(), 0.9) * CONFIG.treeHeight - CONFIG.treeHeight / 2;
-                const r = CONFIG.treeRadius * (1 - (y + CONFIG.treeHeight/2)/CONFIG.treeHeight) * Math.sqrt(Math.random());
+                
+                // 计算最大半径
+                const maxR = CONFIG.treeRadius * (1 - (y + CONFIG.treeHeight/2)/CONFIG.treeHeight);
+                let r;
+
+                if (isOrnaments) {
+                    // 金球红球：尽量靠近表面 (0.6 ~ 1.0 的半径范围)
+                    r = maxR * (0.6 + 0.4 * Math.random());
+                } else {
+                    // 绿色碎片：填充内部 (0 ~ 0.9 的半径范围)
+                    r = maxR * Math.pow(Math.random(), 0.5); 
+                }
+
                 mesh.userData = {
                     treePos: { x: r * Math.cos(theta), y: y, z: r * Math.sin(theta) },
                     scatterPos: { x: (Math.random()-0.5)*1500, y: (Math.random()-0.5)*1500, z: (Math.random()-0.5)*1500 }
@@ -263,7 +286,6 @@
                 emissive: 0xffffff, emissiveMap: tex,
                 emissiveIntensity: CONFIG.photoBrightness.normal.intensity
             });
-            
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(32, 42), material);
             const y = Math.random() * (CONFIG.treeHeight - 100) - (CONFIG.treeHeight/2 - 50);
             const r = CONFIG.treeRadius * (1 - (y + CONFIG.treeHeight/2)/CONFIG.treeHeight) + 20;
@@ -290,7 +312,9 @@
             }
 
             const k = mode === 'TREE' ? 'treePos' : 'scatterPos';
-            const ease = mode === 'TREE' ? TWEEN.Easing.Elastic.Out.config(1, 0.75) : TWEEN.Easing.Exponential.Out;
+            // === 修改点：合拢时使用 Back.Out 让它更紧致，不再反复弹跳 ===
+            const ease = mode === 'TREE' ? TWEEN.Easing.Back.Out.config(0.8) : TWEEN.Easing.Exponential.Out;
+            
             particles.forEach(p => {
                 new TWEEN.Tween(p.position).to(p.userData[k], 2000 + Math.random()*500).easing(ease).start();
                 if(mode === 'SCATTER' && p.geometry.type === 'BoxGeometry') new TWEEN.Tween(p.rotation).to({x:Math.random()*6, y:Math.random()*6}, 2500).start();
@@ -358,28 +382,14 @@
                 const d = (i,j) => Math.hypot(lm[i].x - lm[j].x, lm[i].y - lm[j].y);
                 const isPinch = d(4,8) < 0.05;
                 
-                // === 修复后的优先级 ===
-                // 1. 优先判定握拳 (所有手指弯曲，强制合拢，无视Pinch)
                 if (fingersUp <= 1) { 
-                    statusEl.classList.add('active-gesture'); 
-                    statusEl.innerText = "✊ 握拳：合拢"; 
-                    transformTo('TREE'); 
-                } 
-                // 2. 然后判定张开
-                else if (fingersUp >= 4) { 
-                    statusEl.classList.add('active-gesture'); 
-                    statusEl.innerText = "🖐 张开：散开"; 
-                    transformTo('SCATTER'); 
-                } 
-                // 3. 最后判定捏合 (必须不是握拳状态)
-                else if (isPinch) { 
-                    statusEl.classList.add('active-gesture'); 
-                    statusEl.innerText = "👌 捏合：查看"; 
-                    grabPhoto(); 
-                } 
-                else { 
-                    statusEl.classList.remove('active-gesture'); 
-                    statusEl.innerText = "等待指令..."; 
+                    statusEl.classList.add('active-gesture'); statusEl.innerText = "✊ 握拳：合拢"; transformTo('TREE'); 
+                } else if (fingersUp >= 4) { 
+                    statusEl.classList.add('active-gesture'); statusEl.innerText = "🖐 张开：散开"; transformTo('SCATTER'); 
+                } else if (isPinch) { 
+                    statusEl.classList.add('active-gesture'); statusEl.innerText = "👌 捏合：查看"; grabPhoto(); 
+                } else { 
+                    statusEl.classList.remove('active-gesture'); statusEl.innerText = "等待指令..."; 
                 }
             }
         }
