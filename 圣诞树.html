@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>北北的圣诞树</title>
+    <title>北北的圣诞树 (手势修复版)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: "Microsoft YaHei", sans-serif; -webkit-tap-highlight-color: transparent; }
         
@@ -14,7 +14,6 @@
             display: flex; flex-direction: column; justify-content: center; align-items: center;
         }
         
-        /* 按钮样式：直接显示可点击状态 */
         #start-btn {
             padding: 15px 40px; 
             border: 2px solid #FFD700; 
@@ -119,11 +118,8 @@
             this.innerText = "正在启动...";
             this.style.opacity = "0.7";
             try {
-                // 请求摄像头
                 await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
                 document.getElementById('start-overlay').style.display = 'none';
-                
-                // 启动程序
                 initThree();
                 initMediaPipe();
             } catch (e) {
@@ -141,7 +137,8 @@
             'photos/2.jpg',
             'photos/3.jpg',
             'photos/4.jpg',
-            'photos/5.jpg'
+            'photos/5.jpg',
+            'photos/6.jpg'
         ];
 
         const CONFIG = {
@@ -149,7 +146,7 @@
             particleCount: 1200, 
             treeHeight: 650,
             treeRadius: 280,
-            // 亮度控制：放大时变暗防止曝光
+            // 亮度控制
             photoBrightness: {
                 normal: { intensity: 0.5, color: {r:1, g:1, b:1} }, 
                 zoomed: { intensity: 0.05, color: {r:0.5, g:0.5, b:0.5} } 
@@ -254,13 +251,12 @@
             const loader = new THREE.TextureLoader();
             MY_PHOTOS.forEach(path => {
                 loader.load(path, (tex) => { createPhotoMesh(tex); }, undefined, 
-                (err) => console.warn(`加载失败: ${path} (检查文件名大小写)`));
+                (err) => console.warn(`加载失败: ${path}`));
             });
         }
 
         function createPhotoMesh(tex) {
             tex.colorSpace = THREE.SRGBColorSpace;
-            // 初始材质：较亮
             const material = new THREE.MeshStandardMaterial({
                 map: tex, side: THREE.DoubleSide, roughness: 0.5, metalness: 0.1,
                 color: CONFIG.photoBrightness.normal.color,
@@ -286,7 +282,6 @@
             if(currentMode === mode) return;
             currentMode = mode;
             
-            // 退出查看模式：恢复照片亮度
             if(activePhoto) {
                 new TWEEN.Tween(activePhoto.scale).to({x:1, y:1, z:1}, 800).start();
                 new TWEEN.Tween(activePhoto.material).to({ emissiveIntensity: CONFIG.photoBrightness.normal.intensity }, 800).start();
@@ -313,7 +308,6 @@
             currentMode = 'ZOOM';
             document.getElementById('gesture-status').innerText = "查看照片";
             
-            // 变暗逻辑：降低自发光和颜色亮度
             new TWEEN.Tween(activePhoto.material).to({ emissiveIntensity: CONFIG.photoBrightness.zoomed.intensity }, 1000).start();
             new TWEEN.Tween(activePhoto.material.color).to(CONFIG.photoBrightness.zoomed.color, 1000).start();
 
@@ -359,18 +353,33 @@
                 const handX = (lm[9].x - 0.5) * 2;
                 const handY = (lm[9].y - 0.5) * 2;
                 targetRotY = -handX * 2; targetRotX = handY * 2;
+
                 const fingersUp = [8,12,16,20].filter(i => lm[i].y < lm[i-2].y).length;
                 const d = (i,j) => Math.hypot(lm[i].x - lm[j].x, lm[i].y - lm[j].y);
                 const isPinch = d(4,8) < 0.05;
                 
-                if (isPinch) { 
-                    statusEl.classList.add('active-gesture'); statusEl.innerText = "👌 捏合：查看"; grabPhoto(); 
-                } else if (fingersUp >= 4) { 
-                    statusEl.classList.add('active-gesture'); statusEl.innerText = "🖐 张开：散开"; transformTo('SCATTER'); 
-                } else if (fingersUp <= 1) { 
-                    statusEl.classList.add('active-gesture'); statusEl.innerText = "✊ 握拳：合拢"; transformTo('TREE'); 
-                } else { 
-                    statusEl.classList.remove('active-gesture'); statusEl.innerText = "等待指令..."; 
+                // === 修复后的优先级 ===
+                // 1. 优先判定握拳 (所有手指弯曲，强制合拢，无视Pinch)
+                if (fingersUp <= 1) { 
+                    statusEl.classList.add('active-gesture'); 
+                    statusEl.innerText = "✊ 握拳：合拢"; 
+                    transformTo('TREE'); 
+                } 
+                // 2. 然后判定张开
+                else if (fingersUp >= 4) { 
+                    statusEl.classList.add('active-gesture'); 
+                    statusEl.innerText = "🖐 张开：散开"; 
+                    transformTo('SCATTER'); 
+                } 
+                // 3. 最后判定捏合 (必须不是握拳状态)
+                else if (isPinch) { 
+                    statusEl.classList.add('active-gesture'); 
+                    statusEl.innerText = "👌 捏合：查看"; 
+                    grabPhoto(); 
+                } 
+                else { 
+                    statusEl.classList.remove('active-gesture'); 
+                    statusEl.innerText = "等待指令..."; 
                 }
             }
         }
