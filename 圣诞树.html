@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>北北的圣诞树 (完美手势版)</title>
+    <title>北北的圣诞树 (最终稳定版)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: "Microsoft YaHei", sans-serif; -webkit-tap-highlight-color: transparent; }
         
-        /* 启动层 */
+        /* 1. 启动层 */
         #start-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.92); z-index: 999;
@@ -18,13 +18,18 @@
             padding: 15px 40px; 
             border: 2px solid #FFD700; 
             background: rgba(255, 215, 0, 0.15);
-            color: #FFD700; font-size: 18px; border-radius: 30px; 
-            cursor: pointer; box-shadow: 0 0 20px rgba(255, 215, 0, 0.4); 
-            text-transform: uppercase; font-weight: bold; transition: all 0.3s;
+            color: #FFD700; 
+            font-size: 18px; 
+            border-radius: 30px; 
+            cursor: pointer; 
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.4); 
+            text-transform: uppercase; 
+            font-weight: bold;
+            transition: all 0.3s;
         }
         #start-btn:active { transform: scale(0.95); }
 
-        /* 标题 */
+        /* 2. 标题文字 */
         #main-title {
             position: absolute; top: 12%; width: 100%; text-align: center;
             font-size: 40px; font-weight: bold; color: #fff;
@@ -37,7 +42,7 @@
             to { text-shadow: 0 0 30px #FFD700, 0 0 50px #FF4500; opacity: 1; }
         }
 
-        /* 错误日志 */
+        /* 3. 错误日志 (隐藏，除非出错) */
         #error-log {
             position: fixed; bottom: 0; left: 0; width: 100%; max-height: 100px;
             background: rgba(50, 0, 0, 0.8); color: #ffaaaa; 
@@ -107,6 +112,7 @@
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
         import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
+        // --- 按钮逻辑 ---
         const btn = document.getElementById('start-btn');
         btn.addEventListener('click', async function() {
             this.innerText = "正在启动...";
@@ -118,7 +124,7 @@
                 initMediaPipe();
             } catch (e) {
                 this.innerText = "❌ 启动失败";
-                alert("无法启动摄像头。请确保使用HTTPS链接并允许权限。");
+                alert("无法启动摄像头。请检查：\n1. HTTPS 链接\n2. 浏览器权限");
             }
         });
 
@@ -145,6 +151,7 @@
         let currentMode = 'TREE';
         let activePhoto = null;
         let targetRotX = 0, targetRotY = 0;
+        let lastGestureTime = 0;
 
         function initThree() {
             const container = document.getElementById('canvas-container');
@@ -208,6 +215,7 @@
         function createDecorations() {
             const sphereGeo = new THREE.SphereGeometry(1, 16, 16);
             const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+
             const matGold = new THREE.MeshStandardMaterial({ color: CONFIG.colors.gold, roughness: 0.1, metalness: 1.0, emissive: CONFIG.colors.gold, emissiveIntensity: 0.5 });
             const matRed = new THREE.MeshStandardMaterial({ color: CONFIG.colors.red, roughness: 0.2, metalness: 0.8, emissive: CONFIG.colors.red, emissiveIntensity: 0.3 });
             const matGreen = new THREE.MeshStandardMaterial({ color: CONFIG.colors.green, roughness: 0.8, metalness: 0.1 });
@@ -269,6 +277,7 @@
         function transformTo(mode) {
             if(currentMode === mode) return;
             currentMode = mode;
+            
             if(activePhoto) {
                 new TWEEN.Tween(activePhoto.scale).to({x:1, y:1, z:1}, 800).start();
                 new TWEEN.Tween(activePhoto.material).to({ emissiveIntensity: CONFIG.photoBrightness.normal.intensity }, 800).start();
@@ -278,13 +287,16 @@
 
             const k = mode === 'TREE' ? 'treePos' : 'scatterPos';
             const ease = mode === 'TREE' ? TWEEN.Easing.Back.Out : TWEEN.Easing.Exponential.Out;
+            
             particles.forEach(p => {
                 new TWEEN.Tween(p.position).to(p.userData[k], 2000 + Math.random()*500).easing(ease).start();
                 if(mode === 'SCATTER' && p.geometry.type === 'BoxGeometry') new TWEEN.Tween(p.rotation).to({x:Math.random()*6, y:Math.random()*6}, 2500).start();
             });
             photos.forEach(p => {
                 new TWEEN.Tween(p.position).to(p.userData[k], 2000).easing(ease).onUpdate(() => { 
-                    if(mode === 'SCATTER') p.lookAt(camera.position); else p.lookAt(0, p.position.y, 0); 
+                    // [修复] 安全检查
+                    if(p && mode === 'SCATTER') p.lookAt(camera.position); 
+                    else if(p) p.lookAt(0, p.position.y, 0); 
                 }).start();
             });
         }
@@ -299,13 +311,19 @@
             new TWEEN.Tween(activePhoto.material.color).to(CONFIG.photoBrightness.zoomed.color, 1000).start();
 
             const target = new THREE.Vector3().copy(camera.position).add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(150));
-            new TWEEN.Tween(activePhoto.position).to(target, 1000).easing(TWEEN.Easing.Elastic.Out).onUpdate(() => activePhoto.lookAt(camera.position)).start();
+            new TWEEN.Tween(activePhoto.position).to(target, 1000).easing(TWEEN.Easing.Elastic.Out).onUpdate(() => {
+                // [修复] 安全检查：防止 activePhoto 变 null 报错
+                if (activePhoto) activePhoto.lookAt(camera.position);
+            }).start();
             new TWEEN.Tween(activePhoto.scale).to({x: 5, y: 5, z: 5}, 1000).start();
         }
 
         function animate() {
             requestAnimationFrame(animate);
+            // [修复] 安全检查
+            if (!camera || !scene) return;
             TWEEN.update();
+            
             if(currentMode === 'TREE') {
                 const t = Date.now() * 0.0005;
                 camera.position.x = Math.sin(t * 0.5) * 1000;
@@ -344,32 +362,28 @@
                 const fingersUp = [8,12,16,20].filter(i => lm[i].y < lm[i-2].y).length;
                 const d = (i,j) => Math.hypot(lm[i].x - lm[j].x, lm[i].y - lm[j].y);
                 
-                // === 修复的核心逻辑：调整判定顺序 ===
-                
-                // 1. 放宽捏合判定 (0.08)，并优先判断
-                // 解释：哪怕其他手指是弯的，只要大拇指食指贴贴，就是看照片
-                const isPinch = d(4,8) < 0.08; 
+                // 防抖
+                const now = Date.now();
+                if (now - lastGestureTime < 300) return;
 
+                // 宽松判定捏合：加大阈值到 0.08
+                const isPinch = d(4,8) < 0.08;
+                
+                // 优先级修改：Pinch > Fist > Open
                 if (isPinch) { 
-                    statusEl.classList.add('active-gesture'); 
-                    statusEl.innerText = "👌 捏合：查看照片"; 
-                    grabPhoto(); 
+                    statusEl.classList.add('active-gesture'); statusEl.innerText = "👌 捏合：查看照片"; 
+                    grabPhoto(); lastGestureTime = now;
                 } 
-                // 2. 其次判断握拳 (前提是必须没有捏合)
                 else if (fingersUp <= 1) { 
-                    statusEl.classList.add('active-gesture'); 
-                    statusEl.innerText = "✊ 握拳：合拢"; 
-                    transformTo('TREE'); 
+                    statusEl.classList.add('active-gesture'); statusEl.innerText = "✊ 握拳：合拢"; 
+                    transformTo('TREE'); lastGestureTime = now;
                 } 
-                // 3. 最后判断张开
                 else if (fingersUp >= 3) { 
-                    statusEl.classList.add('active-gesture'); 
-                    statusEl.innerText = "🖐 张开：散开"; 
-                    transformTo('SCATTER'); 
+                    statusEl.classList.add('active-gesture'); statusEl.innerText = "🖐 张开：散开"; 
+                    transformTo('SCATTER'); lastGestureTime = now;
                 } 
                 else { 
-                    statusEl.classList.remove('active-gesture'); 
-                    statusEl.innerText = "等待手势..."; 
+                    statusEl.classList.remove('active-gesture'); statusEl.innerText = "等待指令..."; 
                 }
             }
         }
