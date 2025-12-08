@@ -92,7 +92,7 @@
     <div id="error-log"></div>
 
     <div id="ui-layer">
-        <div id="gesture-status">北北的圣诞树</div>
+        <div id="gesture-status">等待手势...</div>
         <div class="hud-bottom">🖐 张开散开 | ✊ 握拳合拢 | 👌 捏合看照片</div>
     </div>
 
@@ -179,3 +179,258 @@
             // 顶部金色主光
             const topLight = new THREE.PointLight(CONFIG.colors.gold, 4.0, 1500);
             topLight.position.set(0, 600, 100);
+            scene.add(topLight);
+
+            // 底部红色氛围光
+            const bottomLight = new THREE.PointLight(CONFIG.colors.red, 2.5, 1000);
+            bottomLight.position.set(0, -400, 200);
+            scene.add(bottomLight);
+
+            // --- 辉光特效 (Bloom) ---
+            const renderScene = new RenderPass(scene, camera);
+            const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+            bloom.threshold = 0.15; // 阈值
+            bloom.strength = 1.8;   // 强度
+            bloom.radius = 0.8;     // 半径
+            
+            composer = new EffectComposer(renderer);
+            composer.addPass(renderScene);
+            composer.addPass(bloom);
+
+            // 创建场景元素
+            addTopOrnament();
+            createDecorations();
+            loadMyPhotos();
+
+            scene.add(geometryGroup);
+            scene.add(photoGroup);
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                composer.setSize(window.innerWidth, window.innerHeight);
+            });
+            animate();
+        }
+
+        // 1. 添加顶部钻石
+        function addTopOrnament() {
+            const geo = new THREE.OctahedronGeometry(40, 0);
+            const mat = new THREE.MeshStandardMaterial({
+                color: CONFIG.colors.gold,
+                emissive: CONFIG.colors.gold,
+                emissiveIntensity: 2.0, // 强自发光
+                metalness: 1.0,
+                roughness: 0.0
+            });
+            const topStar = new THREE.Mesh(geo, mat);
+            topStar.position.set(0, CONFIG.treeHeight / 2 + 40, 0);
+            
+            // 自转动画
+            new TWEEN.Tween(topStar.rotation).to({y: Math.PI * 4}, 10000).repeat(Infinity).start();
+            scene.add(topStar);
+        }
+
+        // 2. 创建圣诞树粒子 (金球、红球、黑方块)
+        function createDecorations() {
+            const sphereGeo = new THREE.SphereGeometry(1, 16, 16);
+            const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+
+            const matGold = new THREE.MeshStandardMaterial({ 
+                color: CONFIG.colors.gold, roughness: 0.1, metalness: 1.0, 
+                emissive: CONFIG.colors.gold, emissiveIntensity: 0.5 
+            });
+            const matRed = new THREE.MeshStandardMaterial({ 
+                color: CONFIG.colors.red, roughness: 0.2, metalness: 0.8,
+                emissive: CONFIG.colors.red, emissiveIntensity: 0.3
+            });
+            const matDark = new THREE.MeshStandardMaterial({ 
+                color: CONFIG.colors.dark, roughness: 0.9, metalness: 0.2
+            });
+
+            for (let i = 0; i < CONFIG.particleCount; i++) {
+                let mesh, scaleBase;
+                let rnd = Math.random();
+
+                if (rnd < 0.45) { // 45% 金球
+                    mesh = new THREE.Mesh(sphereGeo, matGold);
+                    scaleBase = 6 + Math.random() * 8;
+                } else if (rnd < 0.75) { // 30% 红球
+                    mesh = new THREE.Mesh(sphereGeo, matRed);
+                    scaleBase = 5 + Math.random() * 6;
+                } else { // 25% 深色方块
+                    mesh = new THREE.Mesh(boxGeo, matDark);
+                    scaleBase = 4 + Math.random() * 5;
+                    mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6);
+                }
+                mesh.scale.setScalar(scaleBase);
+
+                // 树形分布
+                const theta = Math.random() * Math.PI * 2;
+                const y = Math.pow(Math.random(), 0.9) * CONFIG.treeHeight - CONFIG.treeHeight / 2; // 重心偏下
+                const r = CONFIG.treeRadius * (1 - (y + CONFIG.treeHeight/2)/CONFIG.treeHeight) * Math.sqrt(Math.random());
+                
+                mesh.userData = {
+                    treePos: { x: r * Math.cos(theta), y: y, z: r * Math.sin(theta) },
+                    scatterPos: { x: (Math.random()-0.5)*1500, y: (Math.random()-0.5)*1500, z: (Math.random()-0.5)*1500 }
+                };
+                mesh.position.copy(mesh.userData.treePos);
+                
+                geometryGroup.add(mesh);
+                particles.push(mesh);
+            }
+        }
+
+        // 3. 加载照片
+        function loadMyPhotos() {
+            const loader = new THREE.TextureLoader();
+            MY_PHOTOS.forEach(path => {
+                loader.load(path, (tex) => { createPhotoMesh(tex); }, undefined, 
+                (err) => console.log(`Photo load failed: ${path}`));
+            });
+        }
+
+        function createPhotoMesh(tex) {
+            tex.colorSpace = THREE.SRGBColorSpace;
+            // 边框材质 (白色) + 图片材质
+            const geometry = new THREE.PlaneGeometry(32, 42); 
+            const material = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
+            
+            const mesh = new THREE.Mesh(geometry, material);
+            
+            // 随机分布在树表面附近
+            const y = Math.random() * (CONFIG.treeHeight - 100) - (CONFIG.treeHeight/2 - 50);
+            const r = CONFIG.treeRadius * (1 - (y + CONFIG.treeHeight/2)/CONFIG.treeHeight) + 20; // 稍微浮在表面
+            const theta = Math.random() * Math.PI * 2;
+
+            mesh.userData = {
+                treePos: { x: r * Math.cos(theta), y: y, z: r * Math.sin(theta) },
+                scatterPos: { x: (Math.random()-0.5)*1000, y: (Math.random()-0.5)*1000, z: (Math.random()-0.5)*1000 }
+            };
+            
+            mesh.position.copy(mesh.userData.treePos);
+            mesh.lookAt(0, y, 0); // 面向中心
+            
+            photoGroup.add(mesh);
+            photos.push(mesh);
+        }
+
+        // 4. 状态切换动画
+        function transformTo(mode) {
+            if(currentMode === mode) return;
+            currentMode = mode;
+            
+            // 退出放大模式
+            if(activePhoto) {
+                new TWEEN.Tween(activePhoto.scale).to({x:1, y:1, z:1}, 800).start();
+                activePhoto = null;
+            }
+
+            const k = mode === 'TREE' ? 'treePos' : 'scatterPos';
+            const ease = mode === 'TREE' ? TWEEN.Easing.Elastic.Out.config(1, 0.75) : TWEEN.Easing.Exponential.Out;
+
+            // 粒子动画
+            particles.forEach(p => {
+                new TWEEN.Tween(p.position).to(p.userData[k], 2000 + Math.random()*500).easing(ease).start();
+                if(mode === 'SCATTER' && p.geometry.type === 'BoxGeometry') {
+                     new TWEEN.Tween(p.rotation).to({x:Math.random()*6, y:Math.random()*6}, 2500).start();
+                }
+            });
+
+            // 照片动画
+            photos.forEach(p => {
+                new TWEEN.Tween(p.position).to(p.userData[k], 2000).easing(ease)
+                .onUpdate(() => { 
+                    if(mode === 'SCATTER') p.lookAt(camera.position); 
+                    else p.lookAt(0, p.position.y, 0); 
+                }).start();
+            });
+        }
+
+        // 5. 抓取照片 (放大)
+        function grabPhoto() {
+            if(currentMode === 'ZOOM' || photos.length === 0) return;
+            
+            // 随机选一张或者选离屏幕中心最近的
+            activePhoto = photos[Math.floor(Math.random() * photos.length)];
+            currentMode = 'ZOOM';
+            document.getElementById('gesture-status').innerText = "查看照片";
+
+            const target = new THREE.Vector3().copy(camera.position).add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(150));
+            
+            new TWEEN.Tween(activePhoto.position).to(target, 1000).easing(TWEEN.Easing.Elastic.Out)
+                .onUpdate(() => activePhoto.lookAt(camera.position)).start();
+            new TWEEN.Tween(activePhoto.scale).to({x: 5, y: 5, z: 5}, 1000).start();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            TWEEN.update();
+
+            if(currentMode === 'TREE') {
+                const t = Date.now() * 0.0005;
+                camera.position.x = Math.sin(t * 0.5) * 1000;
+                camera.position.z = Math.cos(t * 0.5) * 1000;
+                camera.position.y = 100 + Math.sin(t) * 50;
+                camera.lookAt(0, 100, 0);
+            } else if (currentMode === 'SCATTER' && !activePhoto) {
+                // 手势旋转视角
+                camera.position.x += (targetRotY * 600 - camera.position.x) * 0.1;
+                camera.position.y += (targetRotX * 400 - camera.position.y) * 0.1;
+                camera.lookAt(0,0,0);
+            }
+            composer.render();
+        }
+
+        // --- MediaPipe 手势识别 ---
+        async function initMediaPipe() {
+            const videoElement = document.getElementById('video-feed');
+            const hands = new window.Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+            
+            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+            hands.onResults(onResults);
+            
+            const cam = new window.Camera(videoElement, {
+                onFrame: async () => { await hands.send({image: videoElement}); },
+                width: 320, height: 240, facingMode: "user"
+            });
+            await cam.start();
+        }
+
+        function onResults(results) {
+            const statusEl = document.getElementById('gesture-status');
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const lm = results.multiHandLandmarks[0];
+                
+                // 1. 映射手掌位置到旋转
+                const handX = (lm[9].x - 0.5) * 2;
+                const handY = (lm[9].y - 0.5) * 2;
+                targetRotY = -handX * 2; targetRotX = handY * 2;
+
+                // 2. 简单的手势判断
+                const fingersUp = [8,12,16,20].filter(i => lm[i].y < lm[i-2].y).length;
+                const d = (i,j) => Math.hypot(lm[i].x - lm[j].x, lm[i].y - lm[j].y);
+                const isPinch = d(4,8) < 0.05; // 拇指和食指捏合
+
+                if (isPinch) {
+                    statusEl.classList.add('active-gesture'); 
+                    statusEl.innerText = "👌 捏合：查看";
+                    grabPhoto();
+                } else if (fingersUp >= 4) {
+                    statusEl.classList.add('active-gesture'); 
+                    statusEl.innerText = "🖐 张开：散开";
+                    transformTo('SCATTER');
+                } else if (fingersUp <= 1) {
+                    statusEl.classList.add('active-gesture'); 
+                    statusEl.innerText = "✊ 握拳：合拢";
+                    transformTo('TREE');
+                } else {
+                    statusEl.classList.remove('active-gesture');
+                    statusEl.innerText = "等待指令...";
+                }
+            }
+        }
+    </script>
+</body>
+</html>
