@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>北北的圣诞树</title>
+    <title>北北的圣诞树 (金属质感版)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: "Microsoft YaHei", sans-serif; -webkit-tap-highlight-color: transparent; }
         
@@ -63,14 +63,15 @@
             position: absolute; top: 10px; right: 10px; width: 80px; height: 100px;
             transform: scaleX(-1); border: 1px solid #444; opacity: 0.3; object-fit: cover; z-index: 20; border-radius: 5px;
         }
-        @media (max-width: 600px) { #main-title { font-size: 32px; top: 10%; } }
         
-        /* 音乐控制按钮 (可选，放在左上角) */
+        /* 音乐控制 */
         #music-control {
             position: absolute; top: 20px; left: 20px; z-index: 100;
             color: rgba(255,255,255,0.5); font-size: 24px; cursor: pointer;
             pointer-events: auto;
         }
+
+        @media (max-width: 600px) { #main-title { font-size: 32px; top: 10%; } }
     </style>
 
     <script>
@@ -125,20 +126,16 @@
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
         import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
-        // --- 音乐控制逻辑 ---
+        // --- 音乐控制 ---
         const bgm = document.getElementById('bgm');
         const musicIcon = document.getElementById('music-control');
         let isMusicPlaying = false;
 
         musicIcon.addEventListener('click', () => {
             if(isMusicPlaying) {
-                bgm.pause();
-                musicIcon.innerText = "🔇";
-                isMusicPlaying = false;
+                bgm.pause(); musicIcon.innerText = "🔇"; isMusicPlaying = false;
             } else {
-                bgm.play();
-                musicIcon.innerText = "🔊";
-                isMusicPlaying = true;
+                bgm.play(); musicIcon.innerText = "🔊"; isMusicPlaying = true;
             }
         });
 
@@ -148,31 +145,22 @@
             this.innerText = "正在启动...";
             this.style.opacity = "0.7";
             try {
-                // 1. 尝试播放音乐
-                bgm.volume = 0.5; // 音量 50%
-                bgm.play().then(() => {
-                    isMusicPlaying = true;
-                }).catch(e => {
-                    console.warn("音乐自动播放失败，可能需要用户交互", e);
-                    musicIcon.innerText = "🔇";
-                });
-
-                // 2. 请求摄像头
+                bgm.volume = 0.5;
+                bgm.play().then(() => isMusicPlaying = true).catch(() => musicIcon.innerText = "🔇");
+                
                 await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
                 document.getElementById('start-overlay').style.display = 'none';
-                
-                // 3. 启动 3D
                 initThree();
                 initMediaPipe();
             } catch (e) {
                 this.innerText = "❌ 启动失败";
-                alert("无法启动。请检查摄像头权限或HTTPS。");
+                alert("启动失败，请检查HTTPS和摄像头权限。");
             }
         });
 
         // --- 照片配置 ---
         const MY_PHOTOS = [
-            'photos/1.jpg', 'photos/2.jpg', 'photos/3.jpg', 'photos/4.jpg', 'photos/5.jpg', 'photos/6.jpg', 'photos/7.jpg', 'photos/8.jpg', 'photos/9.jpg', 'photos/10.jpg', 'photos/11.jpg', 'photos/12.jpg', 'photos/13.jpg', 'photos/14.jpg'
+            'photos/1.jpg', 'photos/2.jpg', 'photos/3.jpg', 'photos/4.jpg', 'photos/5.jpg'
         ];
 
         const CONFIG = {
@@ -207,21 +195,31 @@
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 1.3;
+            renderer.toneMappingExposure = 1.0; // 稍微降低整体曝光，突显高光
             container.appendChild(renderer.domElement);
 
-            const ambient = new THREE.AmbientLight(0xffffff, 1.2);
+            const ambient = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambient);
-            const topLight = new THREE.PointLight(CONFIG.colors.gold, 4.0, 1500);
+            
+            // 增强点光源，制造金属高光
+            const topLight = new THREE.PointLight(CONFIG.colors.gold, 5.0, 1500);
             topLight.position.set(0, 600, 100);
             scene.add(topLight);
-            const bottomLight = new THREE.PointLight(CONFIG.colors.red, 2.5, 1000);
+            
+            const frontLight = new THREE.DirectionalLight(0xffffff, 2.0);
+            frontLight.position.set(0, 0, 1000);
+            scene.add(frontLight);
+
+            const bottomLight = new THREE.PointLight(CONFIG.colors.red, 3.0, 1000);
             bottomLight.position.set(0, -400, 200);
             scene.add(bottomLight);
 
             const renderScene = new RenderPass(scene, camera);
+            // 调整 Bloom：降低强度，只让最亮的高光发光
             const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-            bloom.threshold = 0.15; bloom.strength = 1.8; bloom.radius = 0.8;
+            bloom.threshold = 0.2; // 提高阈值，只有很亮的地方才发光
+            bloom.strength = 1.0;  // 降低强度，避免糊成一团
+            bloom.radius = 0.5;
             
             composer = new EffectComposer(renderer);
             composer.addPass(renderScene);
@@ -245,8 +243,13 @@
 
         function addTopOrnament() {
             const geo = new THREE.OctahedronGeometry(40, 0);
+            // 顶部的星星可以亮一点
             const mat = new THREE.MeshStandardMaterial({
-                color: CONFIG.colors.gold, emissive: CONFIG.colors.gold, emissiveIntensity: 2.0, metalness: 1.0, roughness: 0.0
+                color: CONFIG.colors.gold, 
+                emissive: CONFIG.colors.gold, 
+                emissiveIntensity: 1.5, // 保持发光
+                metalness: 1.0, 
+                roughness: 0.1
             });
             const topStar = new THREE.Mesh(geo, mat);
             topStar.position.set(0, CONFIG.treeHeight / 2 + 40, 0);
@@ -255,19 +258,52 @@
         }
 
         function createDecorations() {
-            const sphereGeo = new THREE.SphereGeometry(1, 16, 16);
+            const sphereGeo = new THREE.SphereGeometry(1, 32, 32); // 增加面数，让高光更圆润
             const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 
-            const matGold = new THREE.MeshStandardMaterial({ color: CONFIG.colors.gold, roughness: 0.1, metalness: 1.0, emissive: CONFIG.colors.gold, emissiveIntensity: 0.5 });
-            const matRed = new THREE.MeshStandardMaterial({ color: CONFIG.colors.red, roughness: 0.2, metalness: 0.8, emissive: CONFIG.colors.red, emissiveIntensity: 0.3 });
-            const matGreen = new THREE.MeshStandardMaterial({ color: CONFIG.colors.green, roughness: 0.8, metalness: 0.1 });
+            // === 材质质感核心修改区 ===
+            
+            // 金球：高光泽，低自发光
+            const matGold = new THREE.MeshStandardMaterial({ 
+                color: CONFIG.colors.gold, 
+                roughness: 0.15,  // 光滑
+                metalness: 0.9,   // 强金属感
+                emissive: CONFIG.colors.gold, 
+                emissiveIntensity: 0.1 // 极低自发光，靠反光
+            });
+
+            // 红球：如上，类似车漆质感
+            const matRed = new THREE.MeshStandardMaterial({ 
+                color: CONFIG.colors.red, 
+                roughness: 0.15, 
+                metalness: 0.8, 
+                emissive: CONFIG.colors.red, 
+                emissiveIntensity: 0.1 
+            });
+
+            // 绿叶：粗糙，不反光，模拟植物
+            const matGreen = new THREE.MeshStandardMaterial({ 
+                color: CONFIG.colors.green, 
+                roughness: 0.8, 
+                metalness: 0.1 
+            });
 
             for (let i = 0; i < CONFIG.particleCount; i++) {
                 let mesh, scaleBase, rnd = Math.random();
                 let isOrnaments = false;
-                if (rnd < 0.40) { mesh = new THREE.Mesh(sphereGeo, matGold); scaleBase = 6 + Math.random() * 8; isOrnaments = true; } 
-                else if (rnd < 0.65) { mesh = new THREE.Mesh(sphereGeo, matRed); scaleBase = 5 + Math.random() * 6; isOrnaments = true; } 
-                else { mesh = new THREE.Mesh(boxGeo, matGreen); scaleBase = 3 + Math.random() * 4; mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6); isOrnaments = false; }
+
+                if (rnd < 0.40) { 
+                    mesh = new THREE.Mesh(sphereGeo, matGold); 
+                    scaleBase = 6 + Math.random() * 8; isOrnaments = true;
+                } else if (rnd < 0.65) { 
+                    mesh = new THREE.Mesh(sphereGeo, matRed); 
+                    scaleBase = 5 + Math.random() * 6; isOrnaments = true;
+                } else { 
+                    mesh = new THREE.Mesh(boxGeo, matGreen); 
+                    scaleBase = 3 + Math.random() * 4; 
+                    mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6); 
+                    isOrnaments = false;
+                }
                 
                 mesh.scale.setScalar(scaleBase);
                 const theta = Math.random() * Math.PI * 2;
@@ -329,7 +365,6 @@
 
             const k = mode === 'TREE' ? 'treePos' : 'scatterPos';
             const ease = mode === 'TREE' ? TWEEN.Easing.Back.Out : TWEEN.Easing.Exponential.Out;
-            
             particles.forEach(p => {
                 new TWEEN.Tween(p.position).to(p.userData[k], 2000 + Math.random()*500).easing(ease).start();
                 if(mode === 'SCATTER' && p.geometry.type === 'BoxGeometry') new TWEEN.Tween(p.rotation).to({x:Math.random()*6, y:Math.random()*6}, 2500).start();
@@ -426,4 +461,3 @@
     </script>
 </body>
 </html>
-
