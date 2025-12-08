@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>北北的圣诞树 (手势终极修正版)</title>
+    <title>北北的圣诞树</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: "Microsoft YaHei", sans-serif; -webkit-tap-highlight-color: transparent; }
         
@@ -42,7 +42,7 @@
             to { text-shadow: 0 0 30px #FFD700, 0 0 50px #FF4500; opacity: 1; }
         }
 
-        /* 3. 错误日志 (隐藏，除非出错) */
+        /* 3. 错误日志 */
         #error-log {
             position: fixed; bottom: 0; left: 0; width: 100%; max-height: 100px;
             background: rgba(50, 0, 0, 0.8); color: #ffaaaa; 
@@ -64,6 +64,13 @@
             transform: scaleX(-1); border: 1px solid #444; opacity: 0.3; object-fit: cover; z-index: 20; border-radius: 5px;
         }
         @media (max-width: 600px) { #main-title { font-size: 32px; top: 10%; } }
+        
+        /* 音乐控制按钮 (可选，放在左上角) */
+        #music-control {
+            position: absolute; top: 20px; left: 20px; z-index: 100;
+            color: rgba(255,255,255,0.5); font-size: 24px; cursor: pointer;
+            pointer-events: auto;
+        }
     </style>
 
     <script>
@@ -92,11 +99,13 @@
     <div id="start-overlay">
         <h1 style="color:#FFD700; margin-bottom: 30px; text-shadow: 0 0 20px #FF4500;">🎄 北北的圣诞树</h1>
         <button id="start-btn">✨ 点击开启魔法</button>
-        <div style="margin-top: 20px; font-size: 12px; color: #aaa;">请允许摄像头权限</div>
+        <div style="margin-top: 20px; font-size: 12px; color: #aaa;">开启后将自动播放音乐</div>
     </div>
 
     <div id="main-title">北北的圣诞树</div>
     <div id="error-log"></div>
+    
+    <div id="music-control">🔊</div>
 
     <div id="ui-layer">
         <div id="gesture-status">等待手势...</div>
@@ -105,6 +114,10 @@
 
     <video id="video-feed" playsinline muted></video>
     <div id="canvas-container"></div>
+    
+    <audio id="bgm" loop>
+        <source src="music/bgm.mp3" type="audio/mpeg">
+    </audio>
 
     <script type="module">
         import * as THREE from 'three';
@@ -112,19 +125,48 @@
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
         import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
-        // --- 按钮逻辑 ---
+        // --- 音乐控制逻辑 ---
+        const bgm = document.getElementById('bgm');
+        const musicIcon = document.getElementById('music-control');
+        let isMusicPlaying = false;
+
+        musicIcon.addEventListener('click', () => {
+            if(isMusicPlaying) {
+                bgm.pause();
+                musicIcon.innerText = "🔇";
+                isMusicPlaying = false;
+            } else {
+                bgm.play();
+                musicIcon.innerText = "🔊";
+                isMusicPlaying = true;
+            }
+        });
+
+        // --- 启动逻辑 ---
         const btn = document.getElementById('start-btn');
         btn.addEventListener('click', async function() {
             this.innerText = "正在启动...";
             this.style.opacity = "0.7";
             try {
+                // 1. 尝试播放音乐
+                bgm.volume = 0.5; // 音量 50%
+                bgm.play().then(() => {
+                    isMusicPlaying = true;
+                }).catch(e => {
+                    console.warn("音乐自动播放失败，可能需要用户交互", e);
+                    musicIcon.innerText = "🔇";
+                });
+
+                // 2. 请求摄像头
                 await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
                 document.getElementById('start-overlay').style.display = 'none';
+                
+                // 3. 启动 3D
                 initThree();
                 initMediaPipe();
             } catch (e) {
                 this.innerText = "❌ 启动失败";
-                alert("无法启动摄像头。请检查：\n1. HTTPS 链接\n2. 浏览器权限");
+                alert("无法启动。请检查摄像头权限或HTTPS。");
             }
         });
 
@@ -358,28 +400,20 @@
                 const fingersUp = [8,12,16,20].filter(i => lm[i].y < lm[i-2].y).length;
                 const d = (i,j) => Math.hypot(lm[i].x - lm[j].x, lm[i].y - lm[j].y);
                 
-                // 防抖
                 const now = Date.now();
                 if (now - lastGestureTime < 300) return;
 
-                // 宽松判定捏合
                 const isPinch = d(4,8) < 0.08;
-                // 计算其他手指（中指、无名指、小指）伸直的数量
                 const otherFingersUp = [12,16,20].filter(i => lm[i].y < lm[i-2].y).length;
                 
-                // === 核心修复：区分握拳和捏合 ===
-
-                // 1. 捏合判定：大拇指食指靠近，且至少有2个其他手指是伸直的 (排除握拳情况)
                 if (isPinch && otherFingersUp >= 2) { 
                     statusEl.classList.add('active-gesture'); statusEl.innerText = "👌 捏合：查看照片"; 
                     grabPhoto(); lastGestureTime = now;
                 } 
-                // 2. 握拳判定：所有手指（包括食指）都弯曲
-                else if (fingersUp === 0) { 
+                else if (fingersUp <= 1) { 
                     statusEl.classList.add('active-gesture'); statusEl.innerText = "✊ 握拳：合拢"; 
                     transformTo('TREE'); lastGestureTime = now;
                 } 
-                // 3. 张开判定：大部分手指伸直
                 else if (fingersUp >= 3) { 
                     statusEl.classList.add('active-gesture'); statusEl.innerText = "🖐 张开：散开"; 
                     transformTo('SCATTER'); lastGestureTime = now;
