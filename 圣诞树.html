@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>北北的圣诞树 (完美合拢版)</title>
+    <title>北北的圣诞树</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: "Microsoft YaHei", sans-serif; -webkit-tap-highlight-color: transparent; }
         
@@ -119,11 +119,10 @@
             } catch (e) {
                 this.innerText = "❌ 启动失败";
                 alert("无法启动摄像头。请确保使用HTTPS链接并允许权限。");
-                console.error(e);
             }
         });
 
-        // --- 这里修改照片文件名 ---
+        // --- 照片列表 ---
         const MY_PHOTOS = [
             'photos/1.jpg', 'photos/2.jpg', 'photos/3.jpg', 'photos/4.jpg', 'photos/5.jpg', 'photos/6.jpg'
         ];
@@ -132,10 +131,9 @@
             colors: { 
                 gold: 0xFFD700, 
                 red: 0xDC143C, 
-                // 修改：将黑色改为圣诞绿 (Green Fragments)
                 green: 0x006400 
             },
-            particleCount: 1500, // 增加粒子让树更密
+            particleCount: 1500,
             treeHeight: 650,
             treeRadius: 280,
             photoBrightness: {
@@ -151,6 +149,7 @@
         let currentMode = 'TREE';
         let activePhoto = null;
         let targetRotX = 0, targetRotY = 0;
+        let lastGestureTime = 0; // 防抖
 
         function initThree() {
             const container = document.getElementById('canvas-container');
@@ -217,7 +216,6 @@
 
             const matGold = new THREE.MeshStandardMaterial({ color: CONFIG.colors.gold, roughness: 0.1, metalness: 1.0, emissive: CONFIG.colors.gold, emissiveIntensity: 0.5 });
             const matRed = new THREE.MeshStandardMaterial({ color: CONFIG.colors.red, roughness: 0.2, metalness: 0.8, emissive: CONFIG.colors.red, emissiveIntensity: 0.3 });
-            // 修改：绿色碎片材质
             const matGreen = new THREE.MeshStandardMaterial({ color: CONFIG.colors.green, roughness: 0.8, metalness: 0.1 });
 
             for (let i = 0; i < CONFIG.particleCount; i++) {
@@ -225,17 +223,12 @@
                 let isOrnaments = false;
 
                 if (rnd < 0.40) { 
-                    // 40% 金球 (表面)
                     mesh = new THREE.Mesh(sphereGeo, matGold); 
-                    scaleBase = 6 + Math.random() * 8; 
-                    isOrnaments = true;
+                    scaleBase = 6 + Math.random() * 8; isOrnaments = true;
                 } else if (rnd < 0.65) { 
-                    // 25% 红球 (表面)
                     mesh = new THREE.Mesh(sphereGeo, matRed); 
-                    scaleBase = 5 + Math.random() * 6; 
-                    isOrnaments = true;
+                    scaleBase = 5 + Math.random() * 6; isOrnaments = true;
                 } else { 
-                    // 35% 绿色碎片 (内部填充 + 漂浮)
                     mesh = new THREE.Mesh(boxGeo, matGreen); 
                     scaleBase = 3 + Math.random() * 4; 
                     mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6);
@@ -244,21 +237,12 @@
                 
                 mesh.scale.setScalar(scaleBase);
                 
-                // --- 树形位置计算优化 ---
                 const theta = Math.random() * Math.PI * 2;
                 const y = Math.pow(Math.random(), 0.9) * CONFIG.treeHeight - CONFIG.treeHeight / 2;
-                
-                // 计算最大半径
                 const maxR = CONFIG.treeRadius * (1 - (y + CONFIG.treeHeight/2)/CONFIG.treeHeight);
                 let r;
-
-                if (isOrnaments) {
-                    // 金球红球：尽量靠近表面 (0.6 ~ 1.0 的半径范围)
-                    r = maxR * (0.6 + 0.4 * Math.random());
-                } else {
-                    // 绿色碎片：填充内部 (0 ~ 0.9 的半径范围)
-                    r = maxR * Math.pow(Math.random(), 0.5); 
-                }
+                if (isOrnaments) r = maxR * (0.6 + 0.4 * Math.random());
+                else r = maxR * Math.pow(Math.random(), 0.5); 
 
                 mesh.userData = {
                     treePos: { x: r * Math.cos(theta), y: y, z: r * Math.sin(theta) },
@@ -301,6 +285,7 @@
         }
 
         function transformTo(mode) {
+            // 避免重复触发
             if(currentMode === mode) return;
             currentMode = mode;
             
@@ -312,8 +297,9 @@
             }
 
             const k = mode === 'TREE' ? 'treePos' : 'scatterPos';
-            // === 修改点：合拢时使用 Back.Out 让它更紧致，不再反复弹跳 ===
-            const ease = mode === 'TREE' ? TWEEN.Easing.Back.Out.config(0.8) : TWEEN.Easing.Exponential.Out;
+            // !!! 修复点：移除了报错的 .config() !!!
+            // 使用 Back.Out (会有回弹效果) 或者 Exponential.Out (更平滑)
+            const ease = mode === 'TREE' ? TWEEN.Easing.Back.Out : TWEEN.Easing.Exponential.Out;
             
             particles.forEach(p => {
                 new TWEEN.Tween(p.position).to(p.userData[k], 2000 + Math.random()*500).easing(ease).start();
@@ -382,14 +368,31 @@
                 const d = (i,j) => Math.hypot(lm[i].x - lm[j].x, lm[i].y - lm[j].y);
                 const isPinch = d(4,8) < 0.05;
                 
+                // 防抖逻辑
+                const now = Date.now();
+                if (now - lastGestureTime < 500) return; // 0.5秒内不重复触发
+
+                // 优化后的判断逻辑
                 if (fingersUp <= 1) { 
-                    statusEl.classList.add('active-gesture'); statusEl.innerText = "✊ 握拳：合拢"; transformTo('TREE'); 
-                } else if (fingersUp >= 4) { 
-                    statusEl.classList.add('active-gesture'); statusEl.innerText = "🖐 张开：散开"; transformTo('SCATTER'); 
+                    if(currentMode !== 'TREE') {
+                        statusEl.classList.add('active-gesture'); statusEl.innerText = "✊ 握拳：合拢"; 
+                        transformTo('TREE');
+                        lastGestureTime = now;
+                    }
+                } else if (fingersUp >= 3) { // 降低难度，3指就算张开
+                    if(currentMode !== 'SCATTER') {
+                        statusEl.classList.add('active-gesture'); statusEl.innerText = "🖐 张开：散开"; 
+                        transformTo('SCATTER');
+                        lastGestureTime = now;
+                    }
                 } else if (isPinch) { 
-                    statusEl.classList.add('active-gesture'); statusEl.innerText = "👌 捏合：查看"; grabPhoto(); 
-                } else { 
-                    statusEl.classList.remove('active-gesture'); statusEl.innerText = "等待指令..."; 
+                    if(currentMode !== 'ZOOM') {
+                        statusEl.classList.add('active-gesture'); statusEl.innerText = "👌 捏合：查看"; 
+                        grabPhoto(); 
+                        lastGestureTime = now;
+                    }
+                } else {
+                    statusEl.classList.remove('active-gesture');
                 }
             }
         }
