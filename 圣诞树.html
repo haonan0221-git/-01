@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>北北的圣诞树 (最终稳定版)</title>
+    <title>北北的圣诞树 (手势终极修正版)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: "Microsoft YaHei", sans-serif; -webkit-tap-highlight-color: transparent; }
         
@@ -294,7 +294,6 @@
             });
             photos.forEach(p => {
                 new TWEEN.Tween(p.position).to(p.userData[k], 2000).easing(ease).onUpdate(() => { 
-                    // [修复] 安全检查
                     if(p && mode === 'SCATTER') p.lookAt(camera.position); 
                     else if(p) p.lookAt(0, p.position.y, 0); 
                 }).start();
@@ -312,7 +311,6 @@
 
             const target = new THREE.Vector3().copy(camera.position).add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(150));
             new TWEEN.Tween(activePhoto.position).to(target, 1000).easing(TWEEN.Easing.Elastic.Out).onUpdate(() => {
-                // [修复] 安全检查：防止 activePhoto 变 null 报错
                 if (activePhoto) activePhoto.lookAt(camera.position);
             }).start();
             new TWEEN.Tween(activePhoto.scale).to({x: 5, y: 5, z: 5}, 1000).start();
@@ -320,10 +318,8 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            // [修复] 安全检查
             if (!camera || !scene) return;
             TWEEN.update();
-            
             if(currentMode === 'TREE') {
                 const t = Date.now() * 0.0005;
                 camera.position.x = Math.sin(t * 0.5) * 1000;
@@ -366,18 +362,24 @@
                 const now = Date.now();
                 if (now - lastGestureTime < 300) return;
 
-                // 宽松判定捏合：加大阈值到 0.08
+                // 宽松判定捏合
                 const isPinch = d(4,8) < 0.08;
+                // 计算其他手指（中指、无名指、小指）伸直的数量
+                const otherFingersUp = [12,16,20].filter(i => lm[i].y < lm[i-2].y).length;
                 
-                // 优先级修改：Pinch > Fist > Open
-                if (isPinch) { 
+                // === 核心修复：区分握拳和捏合 ===
+
+                // 1. 捏合判定：大拇指食指靠近，且至少有2个其他手指是伸直的 (排除握拳情况)
+                if (isPinch && otherFingersUp >= 2) { 
                     statusEl.classList.add('active-gesture'); statusEl.innerText = "👌 捏合：查看照片"; 
                     grabPhoto(); lastGestureTime = now;
                 } 
-                else if (fingersUp <= 1) { 
+                // 2. 握拳判定：所有手指（包括食指）都弯曲
+                else if (fingersUp === 0) { 
                     statusEl.classList.add('active-gesture'); statusEl.innerText = "✊ 握拳：合拢"; 
                     transformTo('TREE'); lastGestureTime = now;
                 } 
+                // 3. 张开判定：大部分手指伸直
                 else if (fingersUp >= 3) { 
                     statusEl.classList.add('active-gesture'); statusEl.innerText = "🖐 张开：散开"; 
                     transformTo('SCATTER'); lastGestureTime = now;
