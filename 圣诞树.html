@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>北北的圣诞树</title>
+    <title>北北的圣诞树 (雪花魔法版)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: "Microsoft YaHei", sans-serif; -webkit-tap-highlight-color: transparent; }
         
@@ -63,14 +63,15 @@
             position: absolute; top: 10px; right: 10px; width: 80px; height: 100px;
             transform: scaleX(-1); border: 1px solid #444; opacity: 0.3; object-fit: cover; z-index: 20; border-radius: 5px;
         }
-        @media (max-width: 600px) { #main-title { font-size: 32px; top: 10%; } }
         
-        /* 音乐控制按钮 (可选，放在左上角) */
+        /* 音乐控制 */
         #music-control {
             position: absolute; top: 20px; left: 20px; z-index: 100;
             color: rgba(255,255,255,0.5); font-size: 24px; cursor: pointer;
             pointer-events: auto;
         }
+
+        @media (max-width: 600px) { #main-title { font-size: 32px; top: 10%; } }
     </style>
 
     <script>
@@ -125,20 +126,16 @@
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
         import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
-        // --- 音乐控制逻辑 ---
+        // --- 音乐控制 ---
         const bgm = document.getElementById('bgm');
         const musicIcon = document.getElementById('music-control');
         let isMusicPlaying = false;
 
         musicIcon.addEventListener('click', () => {
             if(isMusicPlaying) {
-                bgm.pause();
-                musicIcon.innerText = "🔇";
-                isMusicPlaying = false;
+                bgm.pause(); musicIcon.innerText = "🔇"; isMusicPlaying = false;
             } else {
-                bgm.play();
-                musicIcon.innerText = "🔊";
-                isMusicPlaying = true;
+                bgm.play(); musicIcon.innerText = "🔊"; isMusicPlaying = true;
             }
         });
 
@@ -148,46 +145,41 @@
             this.innerText = "正在启动...";
             this.style.opacity = "0.7";
             try {
-                // 1. 尝试播放音乐
-                bgm.volume = 0.5; // 音量 50%
-                bgm.play().then(() => {
-                    isMusicPlaying = true;
-                }).catch(e => {
-                    console.warn("音乐自动播放失败，可能需要用户交互", e);
-                    musicIcon.innerText = "🔇";
-                });
-
-                // 2. 请求摄像头
+                bgm.volume = 0.5;
+                bgm.play().then(() => isMusicPlaying = true).catch(() => musicIcon.innerText = "🔇");
+                
                 await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
                 document.getElementById('start-overlay').style.display = 'none';
-                
-                // 3. 启动 3D
                 initThree();
                 initMediaPipe();
             } catch (e) {
                 this.innerText = "❌ 启动失败";
-                alert("无法启动。请检查摄像头权限或HTTPS。");
+                alert("启动失败，请检查HTTPS和摄像头权限。");
             }
         });
 
-        // --- 照片配置 ---
+        // --- 配置区 ---
         const MY_PHOTOS = [
-            'photos/1.jpg', 'photos/2.jpg', 'photos/3.jpg', 'photos/4.jpg', 'photos/5.jpg', 'photos/6.jpg', 'photos/7.jpg', 'photos/8.jpg', 'photos/9.jpg', 'photos/10.jpg', 'photos/11.jpg', 'photos/12.jpg', 'photos/13.jpg', 'photos/14.jpg'
+            'photos/1.jpg', 'photos/2.jpg', 'photos/3.jpg', 'photos/4.jpg', 'photos/5.jpg'
         ];
 
         const CONFIG = {
             colors: { gold: 0xFFD700, red: 0xDC143C, green: 0x006400 },
-            particleCount: 1500,
+            particleCount: 1600, 
             treeHeight: 650,
             treeRadius: 280,
             photoBrightness: {
                 normal: { intensity: 0.5, color: {r:1, g:1, b:1} }, 
-                zoomed: { intensity: 0.05, color: {r:0.5, g:0.5, b:0.5} } 
-            }
+                zoomed: { intensity: 0.5, color: {r:1, g:1, b:1} } 
+            },
+            snowCount: 3000 // 雪花数量
         };
 
         let scene, camera, renderer, composer;
         let particles = [], photos = [];
+        // 雪花相关变量
+        let snowSystem, snowGeo, snowVelocities;
+
         let geometryGroup = new THREE.Group();
         let photoGroup = new THREE.Group();
         let currentMode = 'TREE';
@@ -198,34 +190,46 @@
         function initThree() {
             const container = document.getElementById('canvas-container');
             scene = new THREE.Scene();
-            scene.fog = new THREE.FogExp2(0x000000, 0.0008);
+            // 稍微调整雾气，让远处雪花更有层次感
+            scene.fog = new THREE.FogExp2(0x000000, 0.0006);
 
-            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 1, 2500);
+            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 1, 3000);
             camera.position.set(0, 100, 1000);
 
             renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 1.3;
+            renderer.toneMappingExposure = 1.0; 
             container.appendChild(renderer.domElement);
 
-            const ambient = new THREE.AmbientLight(0xffffff, 1.2);
+            const ambient = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambient);
-            const topLight = new THREE.PointLight(CONFIG.colors.gold, 4.0, 1500);
+            
+            const topLight = new THREE.PointLight(CONFIG.colors.gold, 5.0, 1500);
             topLight.position.set(0, 600, 100);
             scene.add(topLight);
-            const bottomLight = new THREE.PointLight(CONFIG.colors.red, 2.5, 1000);
+            
+            const frontLight = new THREE.DirectionalLight(0xffffff, 2.0);
+            frontLight.position.set(0, 0, 1000);
+            scene.add(frontLight);
+
+            const bottomLight = new THREE.PointLight(CONFIG.colors.red, 3.0, 1000);
             bottomLight.position.set(0, -400, 200);
             scene.add(bottomLight);
 
             const renderScene = new RenderPass(scene, camera);
             const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-            bloom.threshold = 0.15; bloom.strength = 1.8; bloom.radius = 0.8;
+            bloom.threshold = 0.2;
+            bloom.strength = 1.2; 
+            bloom.radius = 0.5;
             
             composer = new EffectComposer(renderer);
             composer.addPass(renderScene);
             composer.addPass(bloom);
+
+            // === 初始化雪花 ===
+            initSnow();
 
             addTopOrnament();
             createDecorations();
@@ -243,10 +247,64 @@
             animate();
         }
 
+        // === 新增：动态创建雪花贴图 ===
+        function createSnowTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32; canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            
+            const gradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+            gradient.addColorStop(0, 'rgba(255,255,255,1)'); // 中心白
+            gradient.addColorStop(0.5, 'rgba(255,255,255,0.8)');
+            gradient.addColorStop(1, 'rgba(255,255,255,0)'); // 边缘透明
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 32, 32);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            return texture;
+        }
+
+        // === 新增：初始化雪花系统 ===
+        function initSnow() {
+            snowGeo = new THREE.BufferGeometry();
+            const positions = new Float32Array(CONFIG.snowCount * 3);
+            snowVelocities = new Float32Array(CONFIG.snowCount); // 存储每个雪花的下落速度
+
+            for (let i = 0; i < CONFIG.snowCount; i++) {
+                // 在一个大范围内随机分布
+                positions[i * 3] = (Math.random() - 0.5) * 3000; // X
+                positions[i * 3 + 1] = Math.random() * 2000 - 500; // Y (初始高度)
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 3000; // Z
+                
+                // 随机速度 (2 到 5 之间)
+                snowVelocities[i] = 2 + Math.random() * 3;
+            }
+
+            snowGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const snowMat = new THREE.PointsMaterial({
+                size: 15, // 雪花大小
+                map: createSnowTexture(),
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending, // 发光混合模式
+                depthWrite: false, // 防止遮挡错误
+                color: 0xffffff
+            });
+
+            snowSystem = new THREE.Points(snowGeo, snowMat);
+            scene.add(snowSystem);
+        }
+
         function addTopOrnament() {
             const geo = new THREE.OctahedronGeometry(40, 0);
             const mat = new THREE.MeshStandardMaterial({
-                color: CONFIG.colors.gold, emissive: CONFIG.colors.gold, emissiveIntensity: 2.0, metalness: 1.0, roughness: 0.0
+                color: CONFIG.colors.gold, 
+                emissive: CONFIG.colors.gold, 
+                emissiveIntensity: 1.5, 
+                metalness: 1.0, 
+                roughness: 0.1
             });
             const topStar = new THREE.Mesh(geo, mat);
             topStar.position.set(0, CONFIG.treeHeight / 2 + 40, 0);
@@ -255,26 +313,36 @@
         }
 
         function createDecorations() {
-            const sphereGeo = new THREE.SphereGeometry(1, 16, 16);
+            const sphereGeo = new THREE.SphereGeometry(1, 32, 32); 
             const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+            const giftGeo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+            const candyGeo = new THREE.CylinderGeometry(0.4, 0.4, 1.5, 8);
 
-            const matGold = new THREE.MeshStandardMaterial({ color: CONFIG.colors.gold, roughness: 0.1, metalness: 1.0, emissive: CONFIG.colors.gold, emissiveIntensity: 0.5 });
-            const matRed = new THREE.MeshStandardMaterial({ color: CONFIG.colors.red, roughness: 0.2, metalness: 0.8, emissive: CONFIG.colors.red, emissiveIntensity: 0.3 });
+            const matGold = new THREE.MeshStandardMaterial({ color: CONFIG.colors.gold, roughness: 0.15, metalness: 0.9, emissive: CONFIG.colors.gold, emissiveIntensity: 0.5 });
+            const matRed = new THREE.MeshStandardMaterial({ color: CONFIG.colors.red, roughness: 0.15, metalness: 0.8, emissive: CONFIG.colors.red, emissiveIntensity: 0.5 });
             const matGreen = new THREE.MeshStandardMaterial({ color: CONFIG.colors.green, roughness: 0.8, metalness: 0.1 });
+            const matGiftBlue = new THREE.MeshStandardMaterial({ color: 0x4169E1, roughness: 0.5, metalness: 0.1 });
+            const matGiftPurple = new THREE.MeshStandardMaterial({ color: 0x9370DB, roughness: 0.5, metalness: 0.1 });
+            const matCandyCyan = new THREE.MeshStandardMaterial({ color: 0x00FFFF, roughness: 0.2, metalness: 0.3, emissive: 0x00FFFF, emissiveIntensity: 0.2 });
+            const matCandyPink = new THREE.MeshStandardMaterial({ color: 0xFF69B4, roughness: 0.2, metalness: 0.3, emissive: 0xFF69B4, emissiveIntensity: 0.2 });
 
             for (let i = 0; i < CONFIG.particleCount; i++) {
                 let mesh, scaleBase, rnd = Math.random();
                 let isOrnaments = false;
-                if (rnd < 0.40) { mesh = new THREE.Mesh(sphereGeo, matGold); scaleBase = 6 + Math.random() * 8; isOrnaments = true; } 
-                else if (rnd < 0.65) { mesh = new THREE.Mesh(sphereGeo, matRed); scaleBase = 5 + Math.random() * 6; isOrnaments = true; } 
-                else { mesh = new THREE.Mesh(boxGeo, matGreen); scaleBase = 3 + Math.random() * 4; mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6); isOrnaments = false; }
+
+                if (rnd < 0.30) { mesh = new THREE.Mesh(sphereGeo, matGold); scaleBase = 6 + Math.random() * 6; isOrnaments = true;
+                } else if (rnd < 0.50) { mesh = new THREE.Mesh(sphereGeo, matRed); scaleBase = 5 + Math.random() * 6; isOrnaments = true;
+                } else if (rnd < 0.70) { mesh = new THREE.Mesh(boxGeo, matGreen); scaleBase = 3 + Math.random() * 4; mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6); isOrnaments = false;
+                } else if (rnd < 0.85) { mesh = new THREE.Mesh(giftGeo, Math.random()>0.5 ? matGiftBlue : matGiftPurple); scaleBase = 4 + Math.random() * 5; mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6); isOrnaments = true;
+                } else { mesh = new THREE.Mesh(candyGeo, Math.random()>0.5 ? matCandyCyan : matCandyPink); scaleBase = 3 + Math.random() * 4; mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6); isOrnaments = true; }
                 
                 mesh.scale.setScalar(scaleBase);
                 const theta = Math.random() * Math.PI * 2;
                 const y = Math.pow(Math.random(), 0.9) * CONFIG.treeHeight - CONFIG.treeHeight / 2;
                 const maxR = CONFIG.treeRadius * (1 - (y + CONFIG.treeHeight/2)/CONFIG.treeHeight);
                 let r;
-                if (isOrnaments) r = maxR * (0.6 + 0.4 * Math.random()); else r = maxR * Math.pow(Math.random(), 0.5); 
+                if (isOrnaments) r = maxR * (0.5 + 0.5 * Math.random()); 
+                else r = maxR * Math.pow(Math.random(), 0.5); 
 
                 mesh.userData = {
                     treePos: { x: r * Math.cos(theta), y: y, z: r * Math.sin(theta) },
@@ -329,10 +397,11 @@
 
             const k = mode === 'TREE' ? 'treePos' : 'scatterPos';
             const ease = mode === 'TREE' ? TWEEN.Easing.Back.Out : TWEEN.Easing.Exponential.Out;
-            
             particles.forEach(p => {
                 new TWEEN.Tween(p.position).to(p.userData[k], 2000 + Math.random()*500).easing(ease).start();
-                if(mode === 'SCATTER' && p.geometry.type === 'BoxGeometry') new TWEEN.Tween(p.rotation).to({x:Math.random()*6, y:Math.random()*6}, 2500).start();
+                if(mode === 'SCATTER' && p.geometry.type === 'BoxGeometry' && p.geometry.parameters.width < 1.1) {
+                    new TWEEN.Tween(p.rotation).to({x:Math.random()*6, y:Math.random()*6}, 2500).start();
+                }
             });
             photos.forEach(p => {
                 new TWEEN.Tween(p.position).to(p.userData[k], 2000).easing(ease).onUpdate(() => { 
@@ -362,6 +431,30 @@
             requestAnimationFrame(animate);
             if (!camera || !scene) return;
             TWEEN.update();
+
+            // === 新增：更新雪花动画 ===
+            if (snowSystem && snowGeo && snowVelocities) {
+                const positions = snowGeo.attributes.position.array;
+                const time = Date.now() * 0.001;
+
+                for (let i = 0; i < CONFIG.snowCount; i++) {
+                    // Y轴下落
+                    positions[i * 3 + 1] -= snowVelocities[i];
+                    // X轴轻微摇摆 (sin函数)
+                    positions[i * 3] += Math.sin(time + i) * 0.5;
+
+                    // 如果落到屏幕下方 (-1000)，重置到顶部 (1500)
+                    if (positions[i * 3 + 1] < -1000) {
+                        positions[i * 3 + 1] = 1500;
+                        positions[i * 3] = (Math.random() - 0.5) * 3000; // 重置X位置
+                    }
+                }
+                // 告诉GPU更新位置
+                snowGeo.attributes.position.needsUpdate = true;
+                // 整体缓慢旋转
+                snowSystem.rotation.y += 0.0005;
+            }
+
             if(currentMode === 'TREE') {
                 const t = Date.now() * 0.0005;
                 camera.position.x = Math.sin(t * 0.5) * 1000;
