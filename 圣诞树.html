@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>北北的圣诞树 (雪花魔法版)</title>
+    <title>北北的圣诞树 (调试增强版)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: "Microsoft YaHei", sans-serif; -webkit-tap-highlight-color: transparent; }
         
@@ -42,7 +42,16 @@
             to { text-shadow: 0 0 30px #FFD700, 0 0 50px #FF4500; opacity: 1; }
         }
 
-        /* 3. 错误日志 */
+        /* 3. 实时数据调试面板 (新增) */
+        #debug-info {
+            position: fixed; top: 60px; left: 10px; 
+            background: rgba(0, 0, 0, 0.6); color: #00FF00; 
+            font-size: 12px; z-index: 2000; padding: 5px; 
+            font-family: monospace; pointer-events: none;
+            border: 1px solid #00FF00; border-radius: 4px;
+        }
+
+        /* 错误日志 */
         #error-log {
             position: fixed; bottom: 0; left: 0; width: 100%; max-height: 100px;
             background: rgba(50, 0, 0, 0.8); color: #ffaaaa; 
@@ -104,6 +113,7 @@
     </div>
 
     <div id="main-title">北北的圣诞树</div>
+    <div id="debug-info">等待数据...</div>
     <div id="error-log"></div>
     
     <div id="music-control">🔊</div>
@@ -172,14 +182,12 @@
                 normal: { intensity: 0.5, color: {r:1, g:1, b:1} }, 
                 zoomed: { intensity: 0.5, color: {r:1, g:1, b:1} } 
             },
-            snowCount: 3000 // 雪花数量
+            snowCount: 3000
         };
 
         let scene, camera, renderer, composer;
         let particles = [], photos = [];
-        // 雪花相关变量
         let snowSystem, snowGeo, snowVelocities;
-
         let geometryGroup = new THREE.Group();
         let photoGroup = new THREE.Group();
         let currentMode = 'TREE';
@@ -190,7 +198,6 @@
         function initThree() {
             const container = document.getElementById('canvas-container');
             scene = new THREE.Scene();
-            // 稍微调整雾气，让远处雪花更有层次感
             scene.fog = new THREE.FogExp2(0x000000, 0.0006);
 
             camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 1, 3000);
@@ -228,9 +235,7 @@
             composer.addPass(renderScene);
             composer.addPass(bloom);
 
-            // === 初始化雪花 ===
             initSnow();
-
             addTopOrnament();
             createDecorations();
             loadMyPhotos();
@@ -247,52 +252,36 @@
             animate();
         }
 
-        // === 新增：动态创建雪花贴图 ===
         function createSnowTexture() {
             const canvas = document.createElement('canvas');
             canvas.width = 32; canvas.height = 32;
             const ctx = canvas.getContext('2d');
-            
             const gradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-            gradient.addColorStop(0, 'rgba(255,255,255,1)'); // 中心白
+            gradient.addColorStop(0, 'rgba(255,255,255,1)');
             gradient.addColorStop(0.5, 'rgba(255,255,255,0.8)');
-            gradient.addColorStop(1, 'rgba(255,255,255,0)'); // 边缘透明
-            
+            gradient.addColorStop(1, 'rgba(255,255,255,0)');
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, 32, 32);
-            
-            const texture = new THREE.CanvasTexture(canvas);
-            return texture;
+            return new THREE.CanvasTexture(canvas);
         }
 
-        // === 新增：初始化雪花系统 ===
         function initSnow() {
             snowGeo = new THREE.BufferGeometry();
             const positions = new Float32Array(CONFIG.snowCount * 3);
-            snowVelocities = new Float32Array(CONFIG.snowCount); // 存储每个雪花的下落速度
+            snowVelocities = new Float32Array(CONFIG.snowCount);
 
             for (let i = 0; i < CONFIG.snowCount; i++) {
-                // 在一个大范围内随机分布
-                positions[i * 3] = (Math.random() - 0.5) * 3000; // X
-                positions[i * 3 + 1] = Math.random() * 2000 - 500; // Y (初始高度)
-                positions[i * 3 + 2] = (Math.random() - 0.5) * 3000; // Z
-                
-                // 随机速度 (2 到 5 之间)
+                positions[i * 3] = (Math.random() - 0.5) * 3000;
+                positions[i * 3 + 1] = Math.random() * 2000 - 500;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 3000;
                 snowVelocities[i] = 2 + Math.random() * 3;
             }
 
             snowGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
             const snowMat = new THREE.PointsMaterial({
-                size: 15, // 雪花大小
-                map: createSnowTexture(),
-                transparent: true,
-                opacity: 0.8,
-                blending: THREE.AdditiveBlending, // 发光混合模式
-                depthWrite: false, // 防止遮挡错误
-                color: 0xffffff
+                size: 15, map: createSnowTexture(), transparent: true, opacity: 0.8,
+                blending: THREE.AdditiveBlending, depthWrite: false, color: 0xffffff
             });
-
             snowSystem = new THREE.Points(snowGeo, snowMat);
             scene.add(snowSystem);
         }
@@ -300,11 +289,7 @@
         function addTopOrnament() {
             const geo = new THREE.OctahedronGeometry(40, 0);
             const mat = new THREE.MeshStandardMaterial({
-                color: CONFIG.colors.gold, 
-                emissive: CONFIG.colors.gold, 
-                emissiveIntensity: 1.5, 
-                metalness: 1.0, 
-                roughness: 0.1
+                color: CONFIG.colors.gold, emissive: CONFIG.colors.gold, emissiveIntensity: 1.5, metalness: 1.0, roughness: 0.1
             });
             const topStar = new THREE.Mesh(geo, mat);
             topStar.position.set(0, CONFIG.treeHeight / 2 + 40, 0);
@@ -432,26 +417,19 @@
             if (!camera || !scene) return;
             TWEEN.update();
 
-            // === 新增：更新雪花动画 ===
+            // 雪花动画
             if (snowSystem && snowGeo && snowVelocities) {
                 const positions = snowGeo.attributes.position.array;
                 const time = Date.now() * 0.001;
-
                 for (let i = 0; i < CONFIG.snowCount; i++) {
-                    // Y轴下落
-                    positions[i * 3 + 1] -= snowVelocities[i];
-                    // X轴轻微摇摆 (sin函数)
-                    positions[i * 3] += Math.sin(time + i) * 0.5;
-
-                    // 如果落到屏幕下方 (-1000)，重置到顶部 (1500)
+                    positions[i * 3 + 1] -= snowVelocities[i]; // 下落
+                    positions[i * 3] += Math.sin(time + i) * 0.5; // 摇摆
                     if (positions[i * 3 + 1] < -1000) {
                         positions[i * 3 + 1] = 1500;
-                        positions[i * 3] = (Math.random() - 0.5) * 3000; // 重置X位置
+                        positions[i * 3] = (Math.random() - 0.5) * 3000;
                     }
                 }
-                // 告诉GPU更新位置
                 snowGeo.attributes.position.needsUpdate = true;
-                // 整体缓慢旋转
                 snowSystem.rotation.y += 0.0005;
             }
 
@@ -484,6 +462,8 @@
 
         function onResults(results) {
             const statusEl = document.getElementById('gesture-status');
+            const debugEl = document.getElementById('debug-info');
+            
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const lm = results.multiHandLandmarks[0];
                 const handX = (lm[9].x - 0.5) * 2;
@@ -493,20 +473,28 @@
                 const fingersUp = [8,12,16,20].filter(i => lm[i].y < lm[i-2].y).length;
                 const d = (i,j) => Math.hypot(lm[i].x - lm[j].x, lm[i].y - lm[j].y);
                 
+                // 实时调试数据
+                debugEl.innerText = `Fingers: ${fingersUp} | Pinch Dist: ${d(4,8).toFixed(3)}`;
+
                 const now = Date.now();
                 if (now - lastGestureTime < 300) return;
 
-                const isPinch = d(4,8) < 0.08;
+                // 宽松判定捏合 0.12
+                const isPinch = d(4,8) < 0.12; 
+                // 辅助判断：除食指外，至少还有1根手指是直的
                 const otherFingersUp = [12,16,20].filter(i => lm[i].y < lm[i-2].y).length;
                 
-                if (isPinch && otherFingersUp >= 2) { 
+                // 1. 捏合 (排除握拳)
+                if (isPinch && otherFingersUp >= 1) { 
                     statusEl.classList.add('active-gesture'); statusEl.innerText = "👌 捏合：查看照片"; 
                     grabPhoto(); lastGestureTime = now;
                 } 
+                // 2. 握拳
                 else if (fingersUp <= 1) { 
                     statusEl.classList.add('active-gesture'); statusEl.innerText = "✊ 握拳：合拢"; 
                     transformTo('TREE'); lastGestureTime = now;
                 } 
+                // 3. 张开
                 else if (fingersUp >= 3) { 
                     statusEl.classList.add('active-gesture'); statusEl.innerText = "🖐 张开：散开"; 
                     transformTo('SCATTER'); lastGestureTime = now;
@@ -514,6 +502,8 @@
                 else { 
                     statusEl.classList.remove('active-gesture'); statusEl.innerText = "等待指令..."; 
                 }
+            } else {
+                debugEl.innerText = "未检测到手";
             }
         }
     </script>
